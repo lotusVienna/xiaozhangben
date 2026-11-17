@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>小账本</title>
+<meta name="theme-color" content="#24483a">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#f3f5f1;--card:#fff;--ink:#1d2a24;--mute:#6b7a72;--line:#dfe5e0;--in:#1f7a4d;--out:#c0452f;--acc:#24483a;--on:#fff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121815;--card:#1b241f;--ink:#e8efe9;--mute:#93a39a;--line:#2b3830;--in:#5fcf97;--out:#ff8c76;--acc:#5fcf97;--on:#10231a}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans SC",system-ui,-apple-system,"Segoe UI",sans-serif}
+body{max-width:560px;margin:0 auto;padding:16px 16px 96px}
+.top{display:flex;align-items:center;justify-content:space-between}
+.top button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;width:40px;height:40px;font-size:18px}
+.top h1{font-size:18px;margin:0}
+.sum{background:var(--acc);color:var(--on);border-radius:16px;padding:18px;margin:14px 0}
+.sum .bal{font-size:32px;font-weight:700;margin:2px 0 12px}
+.sum .row{display:flex;gap:24px;font-size:14px;opacity:.92}
+.day{font-size:13px;color:var(--mute);margin:18px 4px 6px;display:flex;justify-content:space-between}
+.item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:6px;width:100%;text-align:left;color:var(--ink);font:inherit}
+.item .c{flex:1;min-width:0}.item .n{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amt{font-weight:700;font-variant-numeric:tabular-nums}.amt.in{color:var(--in)}.amt.out{color:var(--out)}
+.empty{text-align:center;color:var(--mute);padding:48px 0}
+.fab{position:fixed;right:max(16px,calc(50% - 264px));bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--acc);color:var(--on);border:0;border-radius:28px;height:56px;padding:0 24px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.bar{display:flex;gap:8px;margin-top:6px}
+.bar button{flex:1;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:10px;height:40px;font:inherit;font-size:14px}
+dialog{border:0;border-radius:18px;padding:18px;width:min(92vw,520px);background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.seg button{flex:1;height:40px;border:0;background:none;color:var(--ink);font:inherit}
+.seg button.on{background:var(--acc);color:var(--on)}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input,select{width:100%;height:44px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);padding:0 12px;font:inherit;font-size:16px}
+#amount{font-size:26px;font-weight:700}
+.cats{display:flex;flex-wrap:wrap;gap:6px}
+.cats button{border:1px solid var(--line);background:none;color:var(--ink);border-radius:20px;padding:8px 12px;font:inherit;font-size:14px}
+.cats button.on{background:var(--acc);color:var(--on);border-color:var(--acc)}
+.act{display:flex;gap:8px;margin-top:16px}
+.act button{flex:1;height:46px;border-radius:12px;border:1px solid var(--line);background:none;color:var(--ink);font:inherit;font-weight:700}
+.act .ok{background:var(--acc);color:var(--on);border-color:var(--acc)}.act .del{color:var(--out)}
+</style>
+</head>
+<body>
+<div class="top"><button id="prev" aria-label="上个月">‹</button><h1 id="mt"></h1><button id="next" aria-label="下个月">›</button></div>
+<div class="sum"><div style="font-size:13px;opacity:.85">本月结余</div><div class="bal" id="bal"></div>
+<div class="row"><span id="inc"></span><span id="exp"></span></div></div>
+<div id="list"></div>
+<div class="bar"><button id="exp-csv">导出 CSV</button><button id="imp-btn">导入 CSV</button></div>
+<input type="file" id="imp" accept=".csv,text/csv" hidden>
+<button class="fab" id="add">+ 记一笔</button>
+
+<dialog id="dlg">
+<div class="seg"><button data-t="out" class="on">支出</button><button data-t="in">收入</button></div>
+<input id="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00">
+<label>分类</label><div class="cats" id="cats"></div>
+<label>日期</label><input id="date" type="date">
+<label>备注</label><input id="note" type="text" placeholder="选填">
+<div class="act"><button class="del" id="del" hidden>删除</button><button id="cancel">取消</button><button class="ok" id="save">保存</button></div>
+</dialog>
+
+<script>
+const CATS={out:["餐饮","交通","购物","居家","娱乐","医疗","学习","其他"],in:["工资","奖金","兑换","其他"]};
+let data=[],ym=new Date().toISOString().slice(0,7),type="out",cat="",editId=null;
+const $=id=>document.getElementById(id);
+function load(){try{data=JSON.parse(localStorage.getItem("ledger")||"[]")}catch(e){data=[]}}
+function persist(){try{localStorage.setItem("ledger",JSON.stringify(data))}catch(e){alert("无法保存：浏览器禁止了本地存储")}}
+const fmt=n=>n.toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+function render(){
+ const [y,m]=ym.split("-");$("mt").textContent=y+" 年 "+Number(m)+" 月";
+ const L=data.filter(r=>r.date.startsWith(ym)).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+ const inc=L.filter(r=>r.type==="in").reduce((s,r)=>s+r.amount,0),exp=L.filter(r=>r.type==="out").reduce((s,r)=>s+r.amount,0);
+ $("bal").textContent=fmt(inc-exp);$("inc").textContent="收入 "+fmt(inc);$("exp").textContent="支出 "+fmt(exp);
+ const el=$("list");el.textContent="";
+ if(!L.length){el.innerHTML='<div class="empty">这个月还没有记录<br>点右下角「记一笔」开始</div>';return}
+ let last="";
+ L.forEach(r=>{
+  if(r.date!==last){last=r.date;const dt=L.filter(x=>x.date===r.date);const net=dt.reduce((s,x)=>s+(x.type==="in"?x.amount:-x.amount),0);
+   const h=document.createElement("div");h.className="day";h.innerHTML="<span>"+r.date.slice(5).replace("-","月")+"日</span><span>"+fmt(net)+"</span>";el.append(h)}
+  const b=document.createElement("button");b.className="item";
+  b.innerHTML='<div class="c"><div></div><div class="n"></div></div><div class="amt '+r.type+'"></div>';
+  b.querySelector(".c div").textContent=r.cat;b.querySelector(".n").textContent=r.note||"";
+  b.querySelector(".amt").textContent=(r.type==="in"?"+":"-")+fmt(r.amount);
+  b.onclick=()=>openDlg(r);el.append(b)});
+}
+function setType(t){type=t;document.querySelectorAll(".seg button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
+ if(!CATS[t].includes(cat))cat=CATS[t][0];drawCats()}
+function drawCats(){const c=$("cats");c.textContent="";CATS[type].forEach(n=>{const b=document.createElement("button");b.textContent=n;b.className=n===cat?"on":"";b.onclick=()=>{cat=n;drawCats()};c.append(b)})}
+function openDlg(r){editId=r?r.id:null;cat=r?r.cat:"";setType(r?r.type:"out");
+ $("amount").value=r?r.amount:"";$("date").value=r?r.date:today();$("note").value=r?r.note:"";$("del").hidden=!r;$("dlg").showModal();if(!r)$("amount").focus()}
+document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>setType(b.dataset.t));
+$("add").onclick=()=>openDlg();$("cancel").onclick=()=>$("dlg").close();
+$("save").onclick=()=>{const a=parseFloat($("amount").value);if(!(a>0)){$("amount").focus();return}
+ const rec={id:editId||Date.now(),type,amount:Math.round(a*100)/100,cat,date:$("date").value||today(),note:$("note").value.trim()};
+ if(editId)data=data.map(r=>r.id===editId?rec:r);else data.push(rec);
+ persist();ym=rec.date.slice(0,7);$("dlg").close();render()};
+$("del").onclick=()=>{if(confirm("删除这条记录？")){data=data.filter(r=>r.id!==editId);persist();$("dlg").close();render()}};
+function shift(d){const [y,m]=ym.split("-").map(Number);const t=new Date(y,m-1+d,1);ym=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0");render()}
+$("prev").onclick=()=>shift(-1);$("next").onclick=()=>shift(1);
+const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+$("exp-csv").onclick=async()=>{if(!data.length){alert("还没有数据可导出");return}
+ const rows=["日期,类型,分类,金额,备注"].concat([...data].sort((a,b)=>a.date.localeCompare(b.date)).map(r=>[r.date,r.type==="in"?"收入":"支出",q(r.cat),r.amount,q(r.note)].join(",")));
+ const text="\ufeff"+rows.join("\n"),name="小账本-"+today()+".csv";
+ const P=window.Capacitor&&Capacitor.Plugins;
+ if(P&&P.Filesystem&&P.Share){
+  try{const w=await P.Filesystem.writeFile({path:name,data:text,directory:"CACHE",encoding:"utf8"});
+   await P.Share.share({title:name,url:w.uri,dialogTitle:"保存或发送备份"})}catch(e){if(!/cancel/i.test(String(e)))alert("导出失败："+e)}
+  return}
+ const blob=new Blob([text],{type:"text/csv;charset=utf-8"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove()};
+function parseCSV(t){const out=[];let row=[],f="",inq=false;for(let i=0;i<t.length;i++){const c=t[i];
+ if(inq){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else inq=false}else f+=c}
+ else if(c==='"')inq=true;else if(c===","){row.push(f);f=""}else if(c==="\n"){row.push(f);out.push(row);row=[];f=""}else if(c!=="\r")f+=c}
+ if(f||row.length){row.push(f);out.push(row)}return out}
+$("imp-btn").onclick=()=>$("imp").click();
+$("imp").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
+ const rows=parseCSV(String(r.result).replace(/^\ufeff/,"")).slice(1).filter(x=>x.length>=4&&/^\d{4}-\d{2}-\d{2}$/.test(x[0]));
+ if(!rows.length){alert("没有识别到有效记录，请使用本软件导出的 CSV");return}
+ if(!confirm("导入 "+rows.length+" 条记录并与现有数据合并？"))return;
+ rows.forEach((x,i)=>data.push({id:Date.now()+i,date:x[0],type:x[1]==="收入"?"in":"out",cat:x[2]||"其他",amount:parseFloat(x[3])||0,note:x[4]||""}));
+ persist();render()};r.readAsText(f);e.target.value=""};
+load();render();
+</script>
+</body>
+</html>
