@@ -1,7 +1,9 @@
-name: Build APK
+name: Build and Release APK
 on:
   push:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,10 +16,54 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - run: npm ci
+      - run: npm install
+      - run: npm install @capacitor/app @capacitor/browser
       - run: npx cap sync android
-      - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: xiaozhangben-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+      - name: Patch gradle (version and signing)
+        env:
+          N: ${{ github.run_number }}
+          KS: ${{ runner.temp }}/release.jks
+        run: |
+          python3 - <<'PY'
+          import os
+          p = "android/app/build.gradle"
+          s = open(p, encoding="utf-8").read()
+          n = os.environ["N"]
+          s = s.replace('versionCode 1', 'versionCode ' + n)
+          s = s.replace('versionName "1.0"', 'versionName "1.0.' + n + '"')
+          sign = "\n".join([
+              "    signingConfigs {",
+              "        release {",
+              "            storeFile file(System.getenv('KS'))",
+              "            storePassword System.getenv('KEYSTORE_PASSWORD')",
+              "            keyAlias System.getenv('KEY_ALIAS')",
+              "            keyPassword System.getenv('KEY_PASSWORD')",
+              "        }",
+              "    }",
+              "    buildTypes {",
+              "        release {",
+              "            signingConfig signingConfigs.release",
+              ""])
+          old = "    buildTypes {\n        release {\n"
+          assert old in s
+          s = s.replace(old, sign)
+          open(p, "w", encoding="utf-8").write(s)
+          PY
+      - name: Build release APK
+        env:
+          KS: ${{ runner.temp }}/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: chmod +x android/gradlew && cd android && ./gradlew assembleRelease -x lintVitalRelease -x lintVitalAnalyzeRelease
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk xiaozhangben.apk
+          gh release create "v${{ github.run_number }}" xiaozhangben.apk --title "v${{ github.run_number }}" --notes "${MSG:-更新}"
