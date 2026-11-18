@@ -26,6 +26,13 @@ body{max-width:560px;margin:0 auto;padding:16px 16px 96px}
 .fab{position:fixed;right:max(16px,calc(50% - 264px));bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--acc);color:var(--on);border:0;border-radius:28px;height:56px;padding:0 24px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .bar{display:flex;gap:8px;margin-top:6px}
 .bar button{flex:1;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:10px;height:40px;font:inherit;font-size:14px}
+.sg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.sg button{flex:1;height:40px;border:0;background:none;color:var(--ink);font:inherit}
+.sg button.on{background:var(--acc);color:var(--on)}
+.bl .r{margin:9px 0}.bl .h{display:flex;justify-content:space-between;font-size:14px}.bl .b{height:6px;background:var(--line);border-radius:3px;margin-top:4px}.bl .b i{display:block;height:100%;border-radius:3px}
+.sh{font-size:13px;color:var(--mute);margin:16px 0 2px}
+.yt{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}.yt td,.yt th{padding:8px 4px;text-align:right;border-bottom:1px solid var(--line)}.yt th:first-child,.yt td:first-child{text-align:left}.yt th{color:var(--mute);font-weight:400}.yt tr.cl{cursor:pointer}
+dialog{max-height:88vh;overflow:auto}
 dialog{border:0;border-radius:18px;padding:18px;width:min(92vw,520px);background:var(--card);color:var(--ink)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
@@ -43,65 +50,152 @@ input,select{width:100%;height:44px;border:1px solid var(--line);border-radius:1
 </style>
 </head>
 <body>
+<input id="q" type="search" placeholder="搜索备注、分类、方式、金额" style="margin-bottom:12px">
 <div class="top"><button id="prev" aria-label="上个月">‹</button><h1 id="mt"></h1><button id="next" aria-label="下个月">›</button></div>
+<div class="cats" id="curtabs" style="margin-top:12px"></div>
 <div class="sum"><div style="font-size:13px;opacity:.85">本月结余</div><div class="bal" id="bal"></div>
 <div class="row"><span id="inc"></span><span id="exp"></span></div></div>
 <div id="list"></div>
-<div class="bar"><button id="exp-csv">导出 CSV</button><button id="imp-btn">导入 CSV</button></div>
+<div class="bar"><button id="sum-btn">月度汇总</button><button id="exp-csv">导出 CSV</button><button id="imp-btn">导入 CSV</button></div>
+<div class="bar"><button id="upd-btn">检查更新</button></div>
+<div id="ver" style="text-align:center;font-size:12px;color:var(--mute);margin-top:10px"></div>
 <input type="file" id="imp" accept=".csv,text/csv" hidden>
 <button class="fab" id="add">+ 记一笔</button>
+
+<dialog id="sdlg">
+<div class="sg"><button data-m="m" class="on">按月</button><button data-m="y">按年</button></div>
+<div id="stitle" style="font-weight:700;margin:12px 0 4px"></div><div id="sbody"></div>
+<div class="act"><button class="ok" id="sclose">关闭</button></div></dialog>
 
 <dialog id="dlg">
 <div class="seg"><button data-t="out" class="on">支出</button><button data-t="in">收入</button></div>
 <input id="amount" type="number" inputmode="decimal" step="0.01" placeholder="0.00">
+<div id="hamt"></div>
+<div class="cats" id="curs" style="margin-top:8px"></div>
 <label>分类</label><div class="cats" id="cats"></div>
+<label id="paylbl">支付方式</label><div class="cats" id="pays"></div>
+<div style="font-size:12px;color:var(--mute);margin-top:6px">长按自定义的分类或方式可删除</div>
 <label>日期</label><input id="date" type="date">
 <label>备注</label><input id="note" type="text" placeholder="选填">
+<div id="hnote"></div>
 <div class="act"><button class="del" id="del" hidden>删除</button><button id="cancel">取消</button><button class="ok" id="save">保存</button></div>
 </dialog>
 
 <script>
-const CATS={out:["餐饮","交通","购物","居家","娱乐","医疗","学习","其他"],in:["工资","奖金","兑换","其他"]};
+const BASE={out:["餐饮","交通","购物","居家","娱乐","医疗","学习","其他"],in:["工资","奖金","兑换","其他"]};
+let custom={out:[],in:[]};
+try{const c=JSON.parse(localStorage.getItem("ledger_cats")||"null");if(c&&c.out&&c.in)custom=c}catch(e){}
+const saveCats=()=>{try{localStorage.setItem("ledger_cats",JSON.stringify(custom))}catch(e){}};
+const BASEPAY=["刷卡","转账","现金"];let customPay=[];
+try{const c=JSON.parse(localStorage.getItem("ledger_pay")||"null");if(Array.isArray(c))customPay=c}catch(e){}
+const savePay=()=>{try{localStorage.setItem("ledger_pay",JSON.stringify(customPay))}catch(e){}};
+const allPay=()=>BASEPAY.concat(customPay);let pay="刷卡",lastPay="刷卡";
+const allCats=t=>BASE[t].concat(custom[t]);
+const CUR={EUR:"€",USD:"$",CNY:"CN¥",GBP:"£",JPY:"JP¥",HKD:"HK$",CHF:"CHF "};
+let cur="EUR",lastCur="EUR",viewCur="EUR";
+const curOf=r=>CUR[r.cur]?r.cur:"EUR";
 let data=[],ym=new Date().toISOString().slice(0,7),type="out",cat="",editId=null;
 const $=id=>document.getElementById(id);
 function load(){try{data=JSON.parse(localStorage.getItem("ledger")||"[]")}catch(e){data=[]}}
 function persist(){try{localStorage.setItem("ledger",JSON.stringify(data))}catch(e){alert("无法保存：浏览器禁止了本地存储")}}
 const fmt=n=>n.toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2});
 const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+function renderSearch(qv){
+ const terms=qv.split(/\s+/);
+ const L=data.filter(r=>{const h=[r.cat,r.pay||"",r.note||"",String(r.amount),curOf(r),r.date,r.type==="in"?"收入":"支出"].join(" ").toLowerCase();return terms.every(t=>h.includes(t))}).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+ const el=$("list");el.textContent="";
+ if(!L.length){el.innerHTML='<div class="empty">没有找到相关记录</div>';return}
+ const tot={};L.forEach(r=>{const c=curOf(r);tot[c]=tot[c]||{in:0,out:0};tot[c][r.type]+=r.amount});
+ const s=document.createElement("div");s.className="day";s.style.display="block";
+ s.textContent="共 "+L.length+" 条 · "+Object.keys(tot).map(c=>c+" 收入 "+fmt(tot[c].in)+" 支出 "+fmt(tot[c].out)).join("；");el.append(s);
+ let last="";
+ L.forEach(r=>{
+  if(r.date!==last){last=r.date;const h=document.createElement("div");h.className="day";h.textContent=r.date;el.append(h)}
+  const b=document.createElement("button");b.className="item";
+  b.innerHTML='<div class="c"><div></div><div class="n"></div></div><div class="amt '+r.type+'"></div>';
+  b.querySelector(".c div").textContent=r.cat;b.querySelector(".n").textContent=[r.pay,r.note].filter(Boolean).join(" · ");
+  b.querySelector(".amt").textContent=(r.type==="in"?"+":"-")+CUR[curOf(r)]+fmt(r.amount);
+  b.onclick=()=>openDlg(r);el.append(b)});
+}
 function render(){
+ const qv=$("q").value.trim().toLowerCase();
+ document.querySelector(".top").style.display=document.querySelector(".sum").style.display=qv?"none":"";
+ if(qv){$("curtabs").textContent="";renderSearch(qv);return}
  const [y,m]=ym.split("-");$("mt").textContent=y+" 年 "+Number(m)+" 月";
- const L=data.filter(r=>r.date.startsWith(ym)).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+ const M=data.filter(r=>r.date.startsWith(ym));
+ const present=[...new Set(M.map(curOf))];
+ const tabs=present.length?present:[viewCur];
+ if(!tabs.includes(viewCur))viewCur=tabs[0];
+ const tb=$("curtabs");tb.textContent="";
+ if(tabs.length>1)tabs.forEach(c=>{const b=document.createElement("button");b.textContent=c;b.className=c===viewCur?"on":"";b.onclick=()=>{viewCur=c;render()};tb.append(b)});
+ const mny=n=>CUR[viewCur]+fmt(n);
+ const L=M.filter(r=>curOf(r)===viewCur).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
  const inc=L.filter(r=>r.type==="in").reduce((s,r)=>s+r.amount,0),exp=L.filter(r=>r.type==="out").reduce((s,r)=>s+r.amount,0);
- $("bal").textContent=fmt(inc-exp);$("inc").textContent="收入 "+fmt(inc);$("exp").textContent="支出 "+fmt(exp);
+ $("bal").textContent=mny(inc-exp);$("inc").textContent="收入 "+mny(inc);$("exp").textContent="支出 "+mny(exp);
  const el=$("list");el.textContent="";
  if(!L.length){el.innerHTML='<div class="empty">这个月还没有记录<br>点右下角「记一笔」开始</div>';return}
  let last="";
  L.forEach(r=>{
   if(r.date!==last){last=r.date;const dt=L.filter(x=>x.date===r.date);const net=dt.reduce((s,x)=>s+(x.type==="in"?x.amount:-x.amount),0);
-   const h=document.createElement("div");h.className="day";h.innerHTML="<span>"+r.date.slice(5).replace("-","月")+"日</span><span>"+fmt(net)+"</span>";el.append(h)}
+   const h=document.createElement("div");h.className="day";h.innerHTML="<span>"+r.date.slice(5).replace("-","月")+"日</span><span>"+mny(net)+"</span>";el.append(h)}
   const b=document.createElement("button");b.className="item";
   b.innerHTML='<div class="c"><div></div><div class="n"></div></div><div class="amt '+r.type+'"></div>';
-  b.querySelector(".c div").textContent=r.cat;b.querySelector(".n").textContent=r.note||"";
-  b.querySelector(".amt").textContent=(r.type==="in"?"+":"-")+fmt(r.amount);
+  b.querySelector(".c div").textContent=r.cat;b.querySelector(".n").textContent=[r.pay,r.note].filter(Boolean).join(" · ");
+  b.querySelector(".amt").textContent=(r.type==="in"?"+":"-")+mny(r.amount);
   b.onclick=()=>openDlg(r);el.append(b)});
 }
+function drawCurs(){const c=$("curs");c.textContent="";Object.keys(CUR).forEach(k=>{const b=document.createElement("button");b.textContent=k;b.className=k===cur?"on":"";b.onclick=()=>{cur=k;drawCurs()};c.append(b)})}
 function setType(t){type=t;document.querySelectorAll(".seg button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
- if(!CATS[t].includes(cat))cat=CATS[t][0];drawCats()}
-function drawCats(){const c=$("cats");c.textContent="";CATS[type].forEach(n=>{const b=document.createElement("button");b.textContent=n;b.className=n===cat?"on":"";b.onclick=()=>{cat=n;drawCats()};c.append(b)})}
-function openDlg(r){editId=r?r.id:null;cat=r?r.cat:"";setType(r?r.type:"out");
- $("amount").value=r?r.amount:"";$("date").value=r?r.date:today();$("note").value=r?r.note:"";$("del").hidden=!r;$("dlg").showModal();if(!r)$("amount").focus()}
+ if(!allCats(t).includes(cat))cat=allCats(t)[0];$("paylbl").textContent=t==="in"?"收款方式":"支付方式";drawCats();drawPays()}
+function drawCats(){const c=$("cats");c.textContent="";
+ allCats(type).forEach(n=>{const b=document.createElement("button");b.textContent=n;b.className=n===cat?"on":"";
+  b.onclick=()=>{cat=n;drawCats()};
+  if(custom[type].includes(n)){let tm;const del=()=>{if(confirm("删除自定义分类「"+n+"」？\n已有记录不受影响。")){custom[type]=custom[type].filter(x=>x!==n);saveCats();if(cat===n)cat=BASE[type][0];drawCats()}};
+   b.addEventListener("touchstart",()=>{tm=setTimeout(del,700)},{passive:true});["touchend","touchmove","touchcancel"].forEach(ev=>b.addEventListener(ev,()=>clearTimeout(tm),{passive:true}));
+   b.oncontextmenu=e=>{e.preventDefault();del()}}
+  c.append(b)});
+ const add=document.createElement("button");add.textContent="+ 自定义";add.style.borderStyle="dashed";
+ add.onclick=()=>{const v=(prompt("新分类名称")||"").trim().slice(0,8);if(!v)return;
+  if(allCats(type).includes(v)){cat=v;drawCats();return}
+  custom[type].push(v);saveCats();cat=v;drawCats()};
+ c.append(add);drawHist()}
+function drawHist(){
+ const L=data.filter(r=>r.type===type&&r.cat===cat&&r.id!==editId).sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+ const am={},nt={};
+ L.forEach(r=>{const c=curOf(r),k=c+"|"+r.amount;(am[k]=am[k]||{c,v:r.amount,n:0}).n++;if(r.note)(nt[r.note]=nt[r.note]||{t:r.note,n:0}).n++});
+ const sorted=o=>Object.values(o).sort((a,b)=>b.n-a.n).slice(0,6);
+ const fill=(id,label,items,txt,fn)=>{const box=$(id);box.textContent="";if(!items.length)return;
+  const l=document.createElement("div");l.textContent=label;l.style.cssText="font-size:12px;color:var(--mute);margin:8px 0 4px";
+  const w=document.createElement("div");w.className="cats";
+  items.forEach(it=>{const b=document.createElement("button");b.textContent=txt(it);b.onclick=()=>fn(it);w.append(b)});
+  box.append(l,w)};
+ fill("hamt","「"+cat+"」常用金额",sorted(am),it=>CUR[it.c]+fmt(it.v),it=>{$("amount").value=it.v;cur=it.c;drawCurs()});
+ fill("hnote","「"+cat+"」历史备注",sorted(nt),it=>it.t,it=>{$("note").value=it.t})}
+function drawPays(){const c=$("pays");c.textContent="";
+ allPay().forEach(n=>{const b=document.createElement("button");b.textContent=n;b.className=n===pay?"on":"";
+  b.onclick=()=>{pay=n;drawPays()};
+  if(customPay.includes(n)){let tm;const del=()=>{if(confirm("删除自定义方式「"+n+"」？\n已有记录不受影响。")){customPay=customPay.filter(x=>x!==n);savePay();if(pay===n)pay=BASEPAY[0];drawPays()}};
+   b.addEventListener("touchstart",()=>{tm=setTimeout(del,700)},{passive:true});["touchend","touchmove","touchcancel"].forEach(ev=>b.addEventListener(ev,()=>clearTimeout(tm),{passive:true}));
+   b.oncontextmenu=e=>{e.preventDefault();del()}}
+  c.append(b)});
+ const add=document.createElement("button");add.textContent="+ 添加";add.style.borderStyle="dashed";
+ add.onclick=()=>{const v=(prompt("新方式名称（如 支付宝、微信）")||"").trim().slice(0,8);if(!v)return;
+  if(!allPay().includes(v)){customPay.push(v);savePay()}pay=v;drawPays()};
+ c.append(add)}
+function openDlg(r){editId=r?r.id:null;cat=r?r.cat:"";pay=r?(r.pay||lastPay):lastPay;cur=r?curOf(r):lastCur;setType(r?r.type:"out");
+ $("amount").value=r?r.amount:"";$("date").value=r?r.date:today();$("note").value=r?r.note:"";$("del").hidden=!r;drawCurs();$("dlg").showModal();if(!r)$("amount").focus()}
 document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>setType(b.dataset.t));
 $("add").onclick=()=>openDlg();$("cancel").onclick=()=>$("dlg").close();
 $("save").onclick=()=>{const a=parseFloat($("amount").value);if(!(a>0)){$("amount").focus();return}
- const rec={id:editId||Date.now(),type,amount:Math.round(a*100)/100,cat,date:$("date").value||today(),note:$("note").value.trim()};
+ const rec={id:editId||Date.now(),type,amount:Math.round(a*100)/100,cat,pay,cur,date:$("date").value||today(),note:$("note").value.trim()};
  if(editId)data=data.map(r=>r.id===editId?rec:r);else data.push(rec);
- persist();ym=rec.date.slice(0,7);$("dlg").close();render()};
+ lastPay=pay;lastCur=cur;viewCur=cur;persist();ensureHist();ym=rec.date.slice(0,7);$("dlg").close();render()};
 $("del").onclick=()=>{if(confirm("删除这条记录？")){data=data.filter(r=>r.id!==editId);persist();$("dlg").close();render()}};
 function shift(d){const [y,m]=ym.split("-").map(Number);const t=new Date(y,m-1+d,1);ym=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0");render()}
 $("prev").onclick=()=>shift(-1);$("next").onclick=()=>shift(1);
 const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
 $("exp-csv").onclick=async()=>{if(!data.length){alert("还没有数据可导出");return}
- const rows=["日期,类型,分类,金额,备注"].concat([...data].sort((a,b)=>a.date.localeCompare(b.date)).map(r=>[r.date,r.type==="in"?"收入":"支出",q(r.cat),r.amount,q(r.note)].join(",")));
+ const rows=["日期,类型,分类,方式,货币,金额,备注"].concat([...data].sort((a,b)=>a.date.localeCompare(b.date)).map(r=>[r.date,r.type==="in"?"收入":"支出",q(r.cat),q(r.pay||""),curOf(r),r.amount,q(r.note)].join(",")));
  const text="\ufeff"+rows.join("\n"),name="小账本-"+today()+".csv";
  const P=window.Capacitor&&Capacitor.Plugins;
  if(P&&P.Filesystem&&P.Share){
@@ -116,12 +210,120 @@ function parseCSV(t){const out=[];let row=[],f="",inq=false;for(let i=0;i<t.leng
  if(f||row.length){row.push(f);out.push(row)}return out}
 $("imp-btn").onclick=()=>$("imp").click();
 $("imp").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
- const rows=parseCSV(String(r.result).replace(/^\ufeff/,"")).slice(1).filter(x=>x.length>=4&&/^\d{4}-\d{2}-\d{2}$/.test(x[0]));
+ const rows=parseCSV(String(r.result).replace(/^\ufeff/,"")).slice(1).filter(x=>x.length>=5&&/^\d{4}-\d{2}-\d{2}$/.test(x[0]));
  if(!rows.length){alert("没有识别到有效记录，请使用本软件导出的 CSV");return}
  if(!confirm("导入 "+rows.length+" 条记录并与现有数据合并？"))return;
- rows.forEach((x,i)=>data.push({id:Date.now()+i,date:x[0],type:x[1]==="收入"?"in":"out",cat:x[2]||"其他",amount:parseFloat(x[3])||0,note:x[4]||""}));
- persist();render()};r.readAsText(f);e.target.value=""};
-load();render();
+ rows.forEach((x,i)=>{const n7=x.length>=7,n6=x.length>=6;
+  const p=n6?x[3]:"",c0=n7?x[4]:"EUR",c=CUR[c0]?c0:"EUR",am=n7?x[5]:n6?x[4]:x[3],nt=n7?x[6]:n6?x[5]:x[4];
+  if(p&&!allPay().includes(p)){customPay.push(p)}
+  data.push({id:Date.now()+i,date:x[0],type:x[1]==="收入"?"in":"out",cat:x[2]||"其他",pay:p,cur:c,amount:parseFloat(am)||0,note:nt||""})});
+ savePay();persist();ensureHist();render()};r.readAsText(f);e.target.value=""};
+let sumMode="m";
+const mk=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
+let main="EUR";try{const m=localStorage.getItem("ledger_main");if(CUR[m])main=m}catch(e){}
+let RE={EUR:1,USD:.86,CNY:.12,GBP:1.15,JPY:.0057,HKD:.11,CHF:1.07},reDate="";
+try{const c=JSON.parse(localStorage.getItem("ledger_rates")||"null");if(c&&c.r){RE=Object.assign(RE,c.r);reDate=c.d||""}}catch(e){}
+const saveRe=()=>{try{localStorage.setItem("ledger_rates",JSON.stringify({r:RE,d:reDate}))}catch(e){}};
+let HIST={},HM=null,tried=0,busy=false,histErr=false;
+try{const c=JSON.parse(localStorage.getItem("ledger_hist")||"null");if(c&&c.h){HIST=c.h;HM=c.m}}catch(e){}
+function nearest(d){if(HIST[d])return HIST[d];let b=null;for(const k in HIST){if(k<d&&(!b||k>b))b=k}
+ return b&&(new Date(d)-new Date(b))<=10*864e5?HIST[b]:null}
+function rateEUR(c,d){if(c==="EUR")return{r:1,ok:true};const h=nearest(d);return h&&h[c]?{r:1/h[c],ok:true}:{r:RE[c],ok:false}}
+const cv=r=>{const c=curOf(r);if(c===main)return r.amount;return r.amount*rateEUR(c,r.date).r/rateEUR(main,r.date).r};
+const approx=L=>L.filter(r=>{const c=curOf(r);return c!==main&&(!rateEUR(c,r.date).ok||!rateEUR(main,r.date).ok)}).length;
+const addDays=(d,n)=>new Date(new Date(d+"T00:00:00Z").getTime()+n*864e5).toISOString().slice(0,10);
+async function ensureHist(force){
+ if(busy)return false;const now=Date.now();if(!force&&now-tried<6e5)return false;
+ const rel=data.filter(r=>curOf(r)!=="EUR"||main!=="EUR");if(!rel.length)return false;
+ const t=today();const ds=rel.map(r=>r.date).sort();let mn=ds[0],mx=ds[ds.length-1];if(mx>t)mx=t;if(mn>mx)mn=mx;
+ const need=[];if(!HM)need.push([mn,mx]);else{if(mn<HM.from)need.push([mn,HM.from]);if(mx>HM.to)need.push([HM.to,mx])}
+ if(!need.length)return false;
+ busy=true;tried=now;histErr=false;let changed=false;
+ try{for(const [a,b] of need){let x=a;while(x<=b){let y=addDays(x,80);if(y>b)y=b;
+   const j=await(await fetch("https://api.frankfurter.dev/v1/"+(x===y?x:x+".."+y)+"?base=EUR")).json();
+   const R=x===y?{[j.date]:j.rates}:j.rates;
+   for(const d in R){const o={};Object.keys(CUR).forEach(c=>{if(R[d][c])o[c]=R[d][c]});HIST[d]=o;changed=true}
+   x=addDays(y,1)}}
+  const ks=Object.keys(HIST).sort();
+  HM={from:HM?(mn<HM.from?mn:HM.from):mn,to:ks[ks.length-1]};
+  const last=HIST[HM.to];Object.keys(CUR).forEach(c=>{if(c!=="EUR"&&last[c])RE[c]=1/last[c]});RE.EUR=1;reDate=HM.to;saveRe();
+  try{localStorage.setItem("ledger_hist",JSON.stringify({m:HM,h:HIST}))}catch(e){}
+ }catch(e){histErr=true}
+ busy=false;return changed}
+const sum=(L,t,f)=>L.filter(r=>r.type===t).reduce((s,r)=>s+f(r),0);
+function group(L,type,key){const o={};L.filter(r=>r.type===type).forEach(r=>{const k=key(r)||"未填写";o[k]=(o[k]||0)+cv(r)});return Object.entries(o).sort((a,b)=>b[1]-a[1])}
+function bars(box,title,pairs,color){if(!pairs.length)return;const tot=pairs.reduce((s,p)=>s+p[1],0);
+ box.append(mk("div","sh",title));const w=mk("div","bl");
+ pairs.forEach(([k,v])=>{const r=mk("div","r"),h=mk("div","h");h.append(mk("span","",k),mk("span","",fmt(v)+"  "+Math.round(v/tot*100)+"%"));
+  const b=mk("div","b"),i=document.createElement("i");i.style.width=(v/tot*100)+"%";i.style.background=color;b.append(i);r.append(h,b);w.append(r)});box.append(w)}
+function ratesBox(box,cs){const o=cs.filter(c=>c!==main);if(!o.length)return;
+ box.append(mk("div","sh","备用汇率（1 单位 = ? "+main+"，联网取不到当日汇率时使用）"));
+ o.forEach(c=>{const row=mk("div","r");row.style.cssText="display:flex;align-items:center;gap:10px";
+  const inp=document.createElement("input");inp.type="number";inp.step="any";inp.inputMode="decimal";inp.value=Number((RE[c]/RE[main]).toPrecision(6));
+  inp.onchange=()=>{const v=parseFloat(inp.value);if(v>0){RE[c]=v*RE[main];reDate="手动";saveRe()}drawSum()};
+  const l=mk("span","",c);l.style.minWidth="44px";row.append(l,inp);box.append(row)});
+ const bt=mk("button","","更新汇率数据"+(HM?"（已有至 "+HM.to+"）":""));
+ bt.style.cssText="width:100%;height:40px;margin-top:6px;border:1px solid var(--line);border-radius:10px;background:none;color:var(--ink);font:inherit";
+ bt.onclick=async()=>{bt.textContent="更新中…";await ensureHist(true);if(histErr)alert("获取失败，请检查网络");drawSum()};box.append(bt)}
+function fxNote(box,L){const n=approx(L);const e=mk("div","n","各笔按记账当天的汇率折算（欧洲央行）"+(n?"；有 "+n+" 笔暂无当日汇率，先用备用汇率":""));
+ e.style.cssText="font-size:12px;color:var(--mute);margin:8px 0 2px";box.append(e)}
+function drawSum(){
+ const box=$("sbody");box.textContent="";const [y,m]=ym.split("-");
+ document.querySelectorAll(".sg button").forEach(b=>b.classList.toggle("on",b.dataset.m===sumMode));
+ $("stitle").textContent=sumMode==="m"?y+" 年 "+Number(m)+" 月":y+" 年";
+ const mc=mk("div","cats");mc.style.marginBottom="10px";mc.append(mk("span","",""));
+ const ml=mk("div","",  "主要货币");ml.style.cssText="font-size:12px;color:var(--mute);margin-bottom:4px";box.append(ml);
+ Object.keys(CUR).forEach(k=>{const b=mk("button",k===main?"on":"",k);b.onclick=()=>{main=k;try{localStorage.setItem("ledger_main",k)}catch(e){}drawSum()};mc.append(b)});
+ mc.firstChild.remove();box.append(mc);
+ const used=[...new Set(data.map(curOf))];if(!used.includes(main))used.push(main);
+ if(sumMode==="m"){const L=data.filter(r=>r.date.startsWith(ym));
+  if(!L.length){box.append(mk("div","empty","这个月还没有记录"));return}
+  const cs=[...new Set(L.map(curOf))];
+  const inc=sum(L,"in",cv),exp=sum(L,"out",cv);
+  const t=mk("div","sum");t.style.margin="0";t.append(mk("div","","总额（折算为 "+main+"）"));t.firstChild.style.cssText="font-size:13px;opacity:.85";t.append(mk("div","bal",CUR[main]+fmt(inc-exp)));
+  const row=mk("div","row");row.append(mk("span","","收入 "+fmt(inc)),mk("span","","支出 "+fmt(exp)));t.append(row);box.append(t);fxNote(box,L);
+  box.append(mk("div","sh","各货币收支"));
+  cs.forEach(c=>{const Lc=L.filter(r=>curOf(r)===c),i=sum(Lc,"in",r=>r.amount),e=sum(Lc,"out",r=>r.amount);
+   const it=mk("div","item");const cc=mk("div","c");cc.append(mk("div","",c),mk("div","n","收入 "+fmt(i)+" · 支出 "+fmt(e)));
+   const am=mk("div","amt "+(i>=e?"in":"out"),CUR[c]+fmt(i-e));it.append(cc,am);box.append(it)});
+  bars(box,"支出分类（折算为 "+main+"）",group(L,"out",r=>r.cat),"var(--out)");
+  bars(box,"支出方式",group(L,"out",r=>r.pay),"var(--out)");
+  bars(box,"收入分类",group(L,"in",r=>r.cat),"var(--in)");
+  bars(box,"收款方式",group(L,"in",r=>r.pay),"var(--in)");
+  ratesBox(box,used);
+ }else{const tb=document.createElement("table");tb.className="yt";
+  tb.innerHTML="<tr><th>月份</th><th>收入</th><th>支出</th><th>结余</th></tr>";
+  let ti=0,te=0;
+  for(let i=1;i<=12;i++){const k=y+"-"+String(i).padStart(2,"0");const L=data.filter(r=>r.date.startsWith(k));
+   const inc=sum(L,"in",cv),exp=sum(L,"out",cv);ti+=inc;te+=exp;
+   const tr=document.createElement("tr");tr.className="cl";if(!L.length)tr.style.opacity=".45";
+   [i+" 月",L.length?fmt(inc):"-",L.length?fmt(exp):"-",L.length?fmt(inc-exp):"-"].forEach(x=>tr.append(mk("td","",x)));
+   tr.onclick=()=>{ym=k;$("sdlg").close();render()};tb.append(tr)}
+  const tr=document.createElement("tr");tr.style.fontWeight="700";["全年",fmt(ti),fmt(te),fmt(ti-te)].forEach(x=>tr.append(mk("td","",x)));tb.append(tr);
+  box.append(tb);fxNote(box,data.filter(r=>r.date.startsWith(y)));ratesBox(box,used)}
+}
+document.querySelectorAll(".sg button").forEach(b=>b.onclick=()=>{sumMode=b.dataset.m;drawSum()});
+$("sum-btn").onclick=()=>{drawSum();$("sdlg").showModal();ensureHist().then(c=>{if(c&&$("sdlg").open)drawSum()})};$("sclose").onclick=()=>$("sdlg").close();
+const REPO="lotusVienna/xiaozhangben";
+async function checkUpdate(manual){
+ const P=window.Capacitor&&Capacitor.Plugins;
+ if(!P||!P.App){if(manual)alert("检查更新仅在 App 内可用");return}
+ try{
+  const info=await P.App.getInfo();const cur=parseInt(info.build)||0;$("ver").textContent="当前版本 v"+cur;
+  try{localStorage.setItem("ledger_upd",String(Date.now()))}catch(e){}
+  const j=await(await fetch("https://api.github.com/repos/"+REPO+"/releases/latest")).json();
+  const latest=parseInt(String(j.tag_name||"").replace(/\D/g,""))||0;
+  const a=(j.assets||[]).find(x=>/\.apk$/i.test(x.name));
+  if(latest>cur&&a){
+   if(confirm("发现新版本 v"+latest+"（当前 v"+cur+"）\n\n"+(j.body||"").slice(0,200)+"\n\n现在下载吗？下载完成后点开安装包即可覆盖安装。")){
+    if(P.Browser)P.Browser.open({url:a.browser_download_url});else window.open(a.browser_download_url,"_system")}
+  }else if(manual)alert("已是最新版本（v"+cur+"）")
+ }catch(e){if(manual)alert("检查更新失败，请检查网络")}
+}
+$("upd-btn").onclick=()=>checkUpdate(true);
+$("q").oninput=render;
+load();render();ensureHist();
+try{if(Date.now()-Number(localStorage.getItem("ledger_upd")||0)>864e5)checkUpdate(false);else if(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App)Capacitor.Plugins.App.getInfo().then(i=>{$("ver").textContent="当前版本 v"+(parseInt(i.build)||0)}).catch(()=>{})}catch(e){}
 </script>
 </body>
 </html>
