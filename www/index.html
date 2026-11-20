@@ -32,6 +32,9 @@ body{max-width:560px;margin:0 auto;padding:16px 16px 96px}
 .bl .r{margin:9px 0}.bl .h{display:flex;justify-content:space-between;font-size:14px}.bl .b{height:6px;background:var(--line);border-radius:3px;margin-top:4px}.bl .b i{display:block;height:100%;border-radius:3px}
 .sh{font-size:13px;color:var(--mute);margin:16px 0 2px}
 .yt{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}.yt td,.yt th{padding:8px 4px;text-align:right;border-bottom:1px solid var(--line)}.yt th:first-child,.yt td:first-child{text-align:left}.yt th{color:var(--mute);font-weight:400}.yt tr.cl{cursor:pointer}
+.mb{width:44px;height:44px;flex:none;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:20px;position:relative}
+.mb i{position:absolute;top:7px;right:7px;width:9px;height:9px;border-radius:50%;background:var(--out);display:none}
+.mi{display:block;width:100%;height:46px;margin-bottom:8px;border:1px solid var(--line);border-radius:12px;background:none;color:var(--ink);font:inherit;text-align:left;padding:0 14px}
 dialog{max-height:88vh;overflow:auto}
 dialog{border:0;border-radius:18px;padding:18px;width:min(92vw,520px);background:var(--card);color:var(--ink)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
@@ -50,18 +53,26 @@ input,select{width:100%;height:44px;border:1px solid var(--line);border-radius:1
 </style>
 </head>
 <body>
-<input id="q" type="search" placeholder="搜索备注、分类、方式、金额" style="margin-bottom:12px">
+<div style="display:flex;gap:10px;margin-bottom:12px"><input id="q" type="search" placeholder="搜索备注、分类、方式、金额" style="flex:1;min-width:0"><button id="menu-btn" class="mb" aria-label="菜单">☰<i id="menu-dot"></i></button></div>
 <div class="top"><button id="prev" aria-label="上个月">‹</button><h1 id="mt"></h1><button id="next" aria-label="下个月">›</button></div>
 <div class="cats" id="curtabs" style="margin-top:12px"></div>
 <div class="sum"><div style="font-size:13px;opacity:.85">本月结余</div><div class="bal" id="bal"></div>
 <div class="row"><span id="inc"></span><span id="exp"></span></div></div>
 <div id="list"></div>
-<div class="bar"><button id="sum-btn">月度汇总</button><button id="exp-csv">导出 CSV</button><button id="imp-btn">导入 CSV</button></div>
-<div class="bar"><button id="acct-btn">账号与同步</button><button id="upd-btn">检查更新</button></div>
-<div id="syncst" style="text-align:center;font-size:12px;color:var(--mute);margin-top:10px"></div>
-<div id="ver" style="text-align:center;font-size:12px;color:var(--mute);margin-top:10px"></div>
 <input type="file" id="imp" accept=".csv,text/csv" hidden>
 <button class="fab" id="add">+ 记一笔</button>
+
+<dialog id="mdlg">
+<div style="font-weight:700;font-size:17px;margin-bottom:10px">菜单</div>
+<button class="mi" id="sum-btn">月度汇总</button>
+<button class="mi" id="acct-btn">账号与同步</button>
+<button class="mi" id="exp-csv">导出 CSV</button>
+<button class="mi" id="imp-btn">导入 CSV</button>
+<button class="mi" id="upd-btn">检查更新</button>
+<div id="syncst" style="text-align:center;font-size:12px;color:var(--mute);margin-top:12px"></div>
+<div id="ver" style="text-align:center;font-size:12px;color:var(--mute);margin-top:6px"></div>
+<div class="act"><button id="m-close">关闭</button></div>
+</dialog>
 
 <dialog id="adlg">
 <div style="font-weight:700;font-size:17px;margin-bottom:6px">账号与同步</div>
@@ -359,6 +370,7 @@ const hhmm=t=>new Date(t).toTimeString().slice(0,5);
 function updateSyncUI(){
  const t=!S.token?"未登录，账目仅保存在本机":S.email+" · "+(syncMsg||(S.lastSync?"已同步 "+hhmm(S.lastSync):"尚未同步"));
  $("syncst").textContent=t;
+ $("menu-dot").style.display=(S.token&&syncMsg&&syncMsg!=="同步中…")||(!S.token&&S.email)?"block":"none";
  $("a-out").hidden=!!S.token;$("a-in").hidden=!S.token;
  $("a-who").textContent=S.email||"";$("a-state").textContent=syncMsg||(S.lastSync?"上次同步 "+new Date(S.lastSync).toLocaleString("zh-CN"):"尚未同步")}
 function scheduleSync(){if(!S.token)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>doSync(),1500)}
@@ -429,6 +441,9 @@ $("a-del").onclick=async()=>{if(!confirm("将永久删除云端账号和云端�
  if(!confirm("再确认一次：删除云端账号和数据？"))return;
  try{await api("/account/delete",{});S={};saveS();tomb=[];saveT();syncMsg="";amsg("云端账号和数据已删除");updateSyncUI()}catch(e){amsg(e.message||"删除失败，请检查网络")}};
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.token&&Date.now()-(S.lastSync||0)>6e4)doSync()});
+$("menu-btn").onclick=()=>$("mdlg").showModal();
+$("m-close").onclick=()=>$("mdlg").close();
+document.querySelectorAll("#mdlg .mi").forEach(b=>b.addEventListener("click",()=>$("mdlg").close()));
 $("q").oninput=render;
 load();render();ensureHist();updateSyncUI();if(S.token)doSync();
 try{if(Date.now()-Number(localStorage.getItem("ledger_upd")||0)>864e5)checkUpdate(false);else if(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App)Capacitor.Plugins.App.getInfo().then(i=>{$("ver").textContent="当前版本 v"+(parseInt(i.build)||0)}).catch(()=>{})}catch(e){}
