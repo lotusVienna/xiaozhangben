@@ -1,6 +1,11 @@
 name: Build and Release APK
 on:
   push:
+    paths-ignore:
+      - '**.md'
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+      - 'backend/**'
   workflow_dispatch:
 permissions:
   contents: write

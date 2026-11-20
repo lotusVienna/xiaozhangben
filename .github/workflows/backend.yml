@@ -1,0 +1,34 @@
+name: Deploy backend
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Ensure D1 database
+        run: |
+          npx --yes wrangler@4 d1 create ledger || true
+          ID=$(npx --yes wrangler@4 d1 list --json | python3 -c "import sys,json;t=sys.stdin.read();d=json.loads(t[t.index('['):]);print([x['uuid'] for x in d if x['name']=='ledger'][0])")
+          sed -i "s/REPLACE_ME/$ID/" wrangler.toml
+      - name: Apply schema
+        run: npx --yes wrangler@4 d1 execute ledger --remote --yes --file=schema.sql
+      - name: Deploy worker
+        run: npx --yes wrangler@4 deploy
+      - name: Set Resend key
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: echo "$RESEND_API_KEY" | npx --yes wrangler@4 secret put RESEND_API_KEY
