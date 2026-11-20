@@ -57,10 +57,29 @@ input,select{width:100%;height:44px;border:1px solid var(--line);border-radius:1
 <div class="row"><span id="inc"></span><span id="exp"></span></div></div>
 <div id="list"></div>
 <div class="bar"><button id="sum-btn">月度汇总</button><button id="exp-csv">导出 CSV</button><button id="imp-btn">导入 CSV</button></div>
-<div class="bar"><button id="upd-btn">检查更新</button></div>
+<div class="bar"><button id="acct-btn">账号与同步</button><button id="upd-btn">检查更新</button></div>
+<div id="syncst" style="text-align:center;font-size:12px;color:var(--mute);margin-top:10px"></div>
 <div id="ver" style="text-align:center;font-size:12px;color:var(--mute);margin-top:10px"></div>
 <input type="file" id="imp" accept=".csv,text/csv" hidden>
 <button class="fab" id="add">+ 记一笔</button>
+
+<dialog id="adlg">
+<div style="font-weight:700;font-size:17px;margin-bottom:6px">账号与同步</div>
+<div id="a-out">
+ <div style="font-size:13px;color:var(--mute);margin-bottom:8px">用邮箱登录后，账目会同步到云端，可在多台设备上使用，换手机也不会丢。本机现有账目会在登录后上传。</div>
+ <label>邮箱</label><input id="a-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+ <div id="a-codebox" hidden><label>验证码（6 位）</label><input id="a-code" type="text" inputmode="numeric" maxlength="6" placeholder="123456"></div>
+ <div class="act"><button class="ok" id="a-send">获取验证码</button><button class="ok" id="a-login" hidden>登录</button></div>
+</div>
+<div id="a-in" hidden>
+ <div id="a-who" style="font-weight:700;margin:8px 0 2px"></div>
+ <div id="a-state" style="font-size:13px;color:var(--mute)"></div>
+ <div class="act"><button class="ok" id="a-now">立即同步</button><button id="a-logout">退出登录</button></div>
+ <button id="a-del" style="margin-top:14px;width:100%;height:40px;border:1px solid var(--line);border-radius:10px;background:none;color:var(--out);font:inherit">删除云端账号和数据</button>
+</div>
+<div id="a-msg" style="font-size:13px;margin-top:10px;min-height:18px;color:var(--mute)"></div>
+<div class="act"><button id="a-close">关闭</button></div>
+</dialog>
 
 <dialog id="sdlg">
 <div class="sg"><button data-m="m" class="on">按月</button><button data-m="y">按年</button></div>
@@ -85,10 +104,10 @@ input,select{width:100%;height:44px;border:1px solid var(--line);border-radius:1
 const BASE={out:["餐饮","交通","购物","居家","娱乐","医疗","学习","其他"],in:["工资","奖金","兑换","其他"]};
 let custom={out:[],in:[]};
 try{const c=JSON.parse(localStorage.getItem("ledger_cats")||"null");if(c&&c.out&&c.in)custom=c}catch(e){}
-const saveCats=()=>{try{localStorage.setItem("ledger_cats",JSON.stringify(custom))}catch(e){}};
+const saveCats=()=>{try{localStorage.setItem("ledger_cats",JSON.stringify(custom))}catch(e){}S.setAt=Date.now();saveS();scheduleSync()};
 const BASEPAY=["刷卡","转账","现金"];let customPay=[];
 try{const c=JSON.parse(localStorage.getItem("ledger_pay")||"null");if(Array.isArray(c))customPay=c}catch(e){}
-const savePay=()=>{try{localStorage.setItem("ledger_pay",JSON.stringify(customPay))}catch(e){}};
+const savePay=()=>{try{localStorage.setItem("ledger_pay",JSON.stringify(customPay))}catch(e){}S.setAt=Date.now();saveS();scheduleSync()};
 const allPay=()=>BASEPAY.concat(customPay);let pay="刷卡",lastPay="刷卡";
 const allCats=t=>BASE[t].concat(custom[t]);
 const CUR={EUR:"€",USD:"$",CNY:"CN¥",GBP:"£",JPY:"JP¥",HKD:"HK$",CHF:"CHF "};
@@ -97,7 +116,9 @@ const curOf=r=>CUR[r.cur]?r.cur:"EUR";
 let data=[],ym=new Date().toISOString().slice(0,7),type="out",cat="",editId=null;
 const $=id=>document.getElementById(id);
 function load(){try{data=JSON.parse(localStorage.getItem("ledger")||"[]")}catch(e){data=[]}}
-function persist(){try{localStorage.setItem("ledger",JSON.stringify(data))}catch(e){alert("无法保存：浏览器禁止了本地存储")}}
+function persistRaw(){try{localStorage.setItem("ledger",JSON.stringify(data))}catch(e){alert("无法保存：浏览器禁止了本地存储")}}
+function persist(){persistRaw();scheduleSync()}
+const newId=()=>Date.now()*1000+Math.floor(Math.random()*1000);
 const fmt=n=>n.toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2});
 const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 function renderSearch(qv){
@@ -187,10 +208,10 @@ function openDlg(r){editId=r?r.id:null;cat=r?r.cat:"";pay=r?(r.pay||lastPay):las
 document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>setType(b.dataset.t));
 $("add").onclick=()=>openDlg();$("cancel").onclick=()=>$("dlg").close();
 $("save").onclick=()=>{const a=parseFloat($("amount").value);if(!(a>0)){$("amount").focus();return}
- const rec={id:editId||Date.now(),type,amount:Math.round(a*100)/100,cat,pay,cur,date:$("date").value||today(),note:$("note").value.trim()};
+ const rec={id:editId||newId(),updated_at:Date.now(),type,amount:Math.round(a*100)/100,cat,pay,cur,date:$("date").value||today(),note:$("note").value.trim()};
  if(editId)data=data.map(r=>r.id===editId?rec:r);else data.push(rec);
  lastPay=pay;lastCur=cur;viewCur=cur;persist();ensureHist();ym=rec.date.slice(0,7);$("dlg").close();render()};
-$("del").onclick=()=>{if(confirm("删除这条记录？")){data=data.filter(r=>r.id!==editId);persist();$("dlg").close();render()}};
+$("del").onclick=()=>{if(confirm("删除这条记录？")){tomb=tomb.filter(t=>t.id!==editId);tomb.push({id:editId,updated_at:Date.now()});saveT();data=data.filter(r=>r.id!==editId);persist();$("dlg").close();render()}};
 function shift(d){const [y,m]=ym.split("-").map(Number);const t=new Date(y,m-1+d,1);ym=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0");render()}
 $("prev").onclick=()=>shift(-1);$("next").onclick=()=>shift(1);
 const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
@@ -216,7 +237,7 @@ $("imp").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileRea
  rows.forEach((x,i)=>{const n7=x.length>=7,n6=x.length>=6;
   const p=n6?x[3]:"",c0=n7?x[4]:"EUR",c=CUR[c0]?c0:"EUR",am=n7?x[5]:n6?x[4]:x[3],nt=n7?x[6]:n6?x[5]:x[4];
   if(p&&!allPay().includes(p)){customPay.push(p)}
-  data.push({id:Date.now()+i,date:x[0],type:x[1]==="收入"?"in":"out",cat:x[2]||"其他",pay:p,cur:c,amount:parseFloat(am)||0,note:nt||""})});
+  data.push({id:newId(),updated_at:Date.now(),date:x[0],type:x[1]==="收入"?"in":"out",cat:x[2]||"其他",pay:p,cur:c,amount:parseFloat(am)||0,note:nt||""})});
  savePay();persist();ensureHist();render()};r.readAsText(f);e.target.value=""};
 let sumMode="m";
 const mk=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e};
@@ -321,8 +342,95 @@ async function checkUpdate(manual){
  }catch(e){if(manual)alert("检查更新失败，请检查网络")}
 }
 $("upd-btn").onclick=()=>checkUpdate(true);
+const API="https://ledger-api.ye-kangkang3.workers.dev";
+let S={};try{S=JSON.parse(localStorage.getItem("ledger_sync")||"{}")||{}}catch(e){}
+let tomb=[];try{tomb=JSON.parse(localStorage.getItem("ledger_tomb")||"[]")||[]}catch(e){}
+function saveS(){try{localStorage.setItem("ledger_sync",JSON.stringify(S))}catch(e){}}
+function saveT(){try{localStorage.setItem("ledger_tomb",JSON.stringify(tomb))}catch(e){}}
+async function api(path,body,auth){
+ const h={"content-type":"application/json"};if(auth!==false&&S.token)h.authorization="Bearer "+S.token;
+ const r=await fetch(API+path,{method:"POST",headers:h,body:JSON.stringify(body||{})});
+ let j={};try{j=await r.json()}catch(e){}
+ if(r.status===401&&auth!==false){S.token="";saveS();syncMsg="登录已过期，请重新登录";updateSyncUI()}
+ if(!r.ok)throw Object.assign(new Error(j.error||"请求失败"),{status:r.status});
+ return j}
+let syncing=false,syncTimer=null,syncMsg="";
+const hhmm=t=>new Date(t).toTimeString().slice(0,5);
+function updateSyncUI(){
+ const t=!S.token?"未登录，账目仅保存在本机":S.email+" · "+(syncMsg||(S.lastSync?"已同步 "+hhmm(S.lastSync):"尚未同步"));
+ $("syncst").textContent=t;
+ $("a-out").hidden=!!S.token;$("a-in").hidden=!S.token;
+ $("a-who").textContent=S.email||"";$("a-state").textContent=syncMsg||(S.lastSync?"上次同步 "+new Date(S.lastSync).toLocaleString("zh-CN"):"尚未同步")}
+function scheduleSync(){if(!S.token)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>doSync(),1500)}
+const toWire=r=>({id:String(r.id),type:r.type,amount:r.amount,cat:r.cat,pay:r.pay||"",cur:curOf(r),date:r.date,note:r.note||"",updated_at:r.updated_at})
+function mergeIn(list,pulled){let ch=false;const m=new Map(data.map(r=>[String(r.id),r]));const tm=new Map(tomb.map(t=>[String(t.id),t.updated_at]));
+ list.forEach(w=>{const k=String(w.id),l=m.get(k);
+  if(w.deleted){if(l&&(l.updated_at||0)<=w.updated_at){m.delete(k);pulled.add(k);ch=true}return}
+  if(tm.has(k)&&tm.get(k)>=w.updated_at)return;
+  if(!l||(l.updated_at||0)<w.updated_at){m.set(k,{id:Number(w.id),type:w.type,amount:w.amount,cat:w.cat,pay:w.pay||"",cur:w.cur||"EUR",date:w.date,note:w.note||"",updated_at:w.updated_at});pulled.add(k);ch=true}});
+ if(ch){data=[...m.values()];persistRaw()}return ch}
+function applySettings(rs,first){
+ if(!rs||!rs.data)return;const d=rs.data;
+ const okA=a=>Array.isArray(a)?a.filter(x=>typeof x==="string").slice(0,50):[];
+ const rc={out:okA(d.custom&&d.custom.out),in:okA(d.custom&&d.custom.in)},rp=okA(d.customPay);
+ if(first){const u=(a,b)=>[...new Set(a.concat(b))];
+  custom={out:u(custom.out,rc.out),in:u(custom.in,rc.in)};customPay=u(customPay,rp);S.setAt=Date.now()}
+ else if(rs.updated_at>(S.setAt||0)){custom=rc;customPay=rp;S.setAt=rs.updated_at;S.setPushed=rs.updated_at}
+ else return;
+ try{localStorage.setItem("ledger_cats",JSON.stringify(custom));localStorage.setItem("ledger_pay",JSON.stringify(customPay))}catch(e){}}
+async function doSync(manual){
+ if(!S.token||syncing)return;syncing=true;syncMsg="同步中…";updateSyncUI();
+ try{
+  const t0=Date.now();const first=!S.init;
+  if(first&&!S.setAt&&(custom.out.length||custom.in.length||customPay.length)){S.setAt=Date.now();saveS()}
+  if(!data.every(r=>r.updated_at)){data.forEach(r=>{if(!r.updated_at)r.updated_at=t0});persistRaw()}
+  const pulled=new Set();let cursor=S.cursor||0,since=Math.max(0,cursor-1e7),res,changed=false;
+  do{res=await api("/sync",{since});
+   if(mergeIn(res.records||[],pulled))changed=true;
+   cursor=res.cursor;since=res.cursor}while(res.more);
+  applySettings(res.settings,first&&!!res.settings);
+  const lp=S.lastPush||0;
+  const dirty=data.filter(r=>!pulled.has(String(r.id))&&(r.updated_at||0)>=lp).map(toWire);
+  const tsent=tomb.slice();
+  const items=dirty.concat(tsent.map(t=>({id:String(t.id),deleted:true,updated_at:t.updated_at})));
+  const setDirty=(S.setAt||0)>(S.setPushed||0);
+  const setObj=setDirty?{data:{custom,customPay},updated_at:S.setAt}:null;
+  for(let i=0;i<Math.max(1,Math.ceil(items.length/100));i++){
+   const chunk=items.slice(i*100,i*100+100);
+   if(!chunk.length&&!(i===0&&setObj))break;
+   await api("/sync",{records:chunk,settings:i===0?setObj:undefined})}
+  if(setObj)S.setPushed=S.setAt;
+  const ids=new Set(tsent.map(t=>t.id));tomb=tomb.filter(t=>!ids.has(t.id));saveT();
+  S.init=true;S.cursor=cursor;S.lastPush=t0;S.lastSync=Date.now();saveS();
+  syncMsg="";if(changed)render();
+ }catch(e){syncMsg=S.token?(e.status?e.message:"离线，稍后自动重试"):"登录已过期，请重新登录"}
+ syncing=false;updateSyncUI()}
+function amsg(t){$("a-msg").textContent=t||""}
+let pendingEmail="";
+$("acct-btn").onclick=()=>{amsg("");updateSyncUI();$("adlg").showModal();if(S.token)doSync()};
+$("a-close").onclick=()=>$("adlg").close();
+$("a-send").onclick=async()=>{const email=$("a-email").value.trim().toLowerCase();if(!email){$("a-email").focus();return}
+ amsg("发送中…");try{await api("/auth/request",{email},false);pendingEmail=email;
+  $("a-codebox").hidden=false;$("a-login").hidden=false;$("a-send").textContent="重新获取";$("a-code").focus();
+  amsg("验证码已发送到 "+email+"，10 分钟内有效，没收到请看垃圾邮件")}catch(e){amsg(e.message||"发送失败，请检查网络")}};
+$("a-login").onclick=async()=>{const code=$("a-code").value.trim();if(!/^\d{6}$/.test(code)){amsg("请输入 6 位验证码");return}
+ amsg("登录中…");try{const r=await api("/auth/verify",{email:pendingEmail||$("a-email").value.trim().toLowerCase(),code},false);
+  if(S.email&&S.email!==r.email&&data.length&&!confirm("本机的 "+data.length+" 条账目来自另一个账号（"+S.email+"）。登录 "+r.email+" 后会合并上传到这个账号，继续吗？")){amsg("");return}
+  if(S.email!==r.email){S={token:r.token,email:r.email};tomb=[];saveT()}else S.token=r.token;
+  saveS();$("a-code").value="";$("a-codebox").hidden=true;$("a-login").hidden=true;$("a-send").textContent="获取验证码";
+  amsg("登录成功");syncMsg="";updateSyncUI();doSync(true)}catch(e){amsg(e.message||"登录失败，请检查网络")}};
+$("a-now").onclick=()=>{amsg("");doSync(true)};
+$("a-logout").onclick=async()=>{if(!confirm("退出登录？"))return;
+ const wipe=confirm("是否同时清除本机的账目？\n云端数据会保留，再次登录即可恢复。\n\n确定：清除本机　取消：保留本机");
+ try{await api("/auth/logout",{})}catch(e){}
+ if(wipe){data=[];persistRaw();tomb=[];saveT();S={}}else S={email:S.email};
+ saveS();syncMsg="";amsg("");updateSyncUI();render()};
+$("a-del").onclick=async()=>{if(!confirm("将永久删除云端账号和云端的全部账目，无法恢复。本机数据不会被删除。继续吗？"))return;
+ if(!confirm("再确认一次：删除云端账号和数据？"))return;
+ try{await api("/account/delete",{});S={};saveS();tomb=[];saveT();syncMsg="";amsg("云端账号和数据已删除");updateSyncUI()}catch(e){amsg(e.message||"删除失败，请检查网络")}};
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.token&&Date.now()-(S.lastSync||0)>6e4)doSync()});
 $("q").oninput=render;
-load();render();ensureHist();
+load();render();ensureHist();updateSyncUI();if(S.token)doSync();
 try{if(Date.now()-Number(localStorage.getItem("ledger_upd")||0)>864e5)checkUpdate(false);else if(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App)Capacitor.Plugins.App.getInfo().then(i=>{$("ver").textContent="当前版本 v"+(parseInt(i.build)||0)}).catch(()=>{})}catch(e){}
 </script>
 </body>
