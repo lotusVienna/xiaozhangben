@@ -336,8 +336,8 @@ async function checkUpdate(manual){
   const latest=parseInt(String(j.tag_name||"").replace(/\D/g,""))||0;
   const a=(j.assets||[]).find(x=>/\.apk$/i.test(x.name));
   if(latest>cur&&a){
-   if(confirm("发现新版本 v"+latest+"（当前 v"+cur+"）\n\n"+(j.body||"").slice(0,200)+"\n\n现在下载吗？下载完成后点开安装包即可覆盖安装。")){
-    if(P.Browser)P.Browser.open({url:a.browser_download_url});else window.open(a.browser_download_url,"_system")}
+   if(confirm("发现新版本 v"+latest+"（当前 v"+cur+"）\n\n"+(j.body||"").slice(0,200)+"\n\n现在下载吗？会用系统浏览器下载，完成后点开安装包即可覆盖安装。")){
+    window.location.href=a.browser_download_url}
   }else if(manual)alert("已是最新版本（v"+cur+"）")
  }catch(e){if(manual)alert("检查更新失败，请检查网络")}
 }
