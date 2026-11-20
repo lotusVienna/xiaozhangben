@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>小账本</title>
 <meta name="theme-color" content="#24483a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%93%92%3C/text%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
 :root{--bg:#f3f5f1;--card:#fff;--ink:#1d2a24;--mute:#6b7a72;--line:#dfe5e0;--in:#1f7a4d;--out:#c0452f;--acc:#24483a;--on:#fff;
@@ -441,6 +442,7 @@ $("a-del").onclick=async()=>{if(!confirm("将永久删除云端账号和云端�
  if(!confirm("再确认一次：删除云端账号和数据？"))return;
  try{await api("/account/delete",{});S={};saveS();tomb=[];saveT();syncMsg="";amsg("云端账号和数据已删除");updateSyncUI()}catch(e){amsg(e.message||"删除失败，请检查网络")}};
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.token&&Date.now()-(S.lastSync||0)>6e4)doSync()});
+if(!(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App))$("upd-btn").hidden=true;
 $("menu-btn").onclick=()=>$("mdlg").showModal();
 $("m-close").onclick=()=>$("mdlg").close();
 document.querySelectorAll("#mdlg .mi").forEach(b=>b.addEventListener("click",()=>$("mdlg").close()));

@@ -26,11 +26,15 @@
 - 数据先保存在手机本地，离线也能记账。登录账号后会同步到云端，卸载 App 或换手机后重新登录即可恢复。
 - 没有登录时，卸载 App 或清除 App 数据会丢失，建议登录，或定期点「导出 CSV」备份。
 
+## 网页版
+
+在电脑浏览器打开 https://ledger-api.ye-kangkang3.workers.dev ，用同一个邮箱登录，账目会和手机互相同步。网页版数据先存在这个浏览器里，建议登录后使用。网页版没有「检查更新」，页面随部署自动更新。
+
 ## 云端同步的结构
 
 - 后端在 `backend/`：Cloudflare Workers（接口）加 D1（数据库），邮件验证码通过 Resend 发送，发件域名为 `ledger.lofla.at`。
 - 每个账号的数据互相隔离。冲突时以每条记录最后一次修改为准，删除用标记同步。
-- 推送到 `main` 且修改了 `backend/` 后，GitHub Actions 自动部署后端，需要的 Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`RESEND_API_KEY`。
+- 推送到 `main` 且修改了 `backend/` 或 `www/` 后，GitHub Actions 自动部署后端和网页版，需要的 Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`RESEND_API_KEY`。
 - Cloudflare API 令牌设有有效期，到期前需要重新创建并更新 GitHub Secret，否则只影响自动部署，不影响已运行的后端。
 
 ## 开发说明
