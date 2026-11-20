@@ -6,3 +6,6 @@ compatibility_date = "2025-01-01"
 binding = "DB"
 database_name = "ledger"
 database_id = "REPLACE_ME"
+
+[assets]
+directory = "../www"

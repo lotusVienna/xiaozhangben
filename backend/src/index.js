@@ -151,7 +151,7 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const path = new URL(req.url).pathname;
     try {
-      if (req.method === "GET" && path === "/") return J({ ok: true });
+      if (req.method === "GET" && (path === "/" || path === "/health")) return J({ ok: true });
       if (req.method !== "POST") return J({ error: "not found" }, 404);
       if (path === "/auth/request") return await authRequest(req, env);
       if (path === "/auth/verify") return await authVerify(req, env);
