@@ -22,8 +22,12 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm install
-      - run: npm install @capacitor/app @capacitor/browser
+      - run: npm install @capacitor/app @capacitor/browser @capacitor-community/file-opener
       - run: npx cap sync android
+      - name: Add install permission
+        run: |
+          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|&\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />|' android/app/src/main/AndroidManifest.xml
+          grep -c "REQUEST_INSTALL_PACKAGES" android/app/src/main/AndroidManifest.xml
       - name: Decode keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
