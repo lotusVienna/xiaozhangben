@@ -75,6 +75,14 @@ input,select{width:100%;height:44px;border:1px solid var(--line);border-radius:1
 <div class="act"><button id="m-close">关闭</button></div>
 </dialog>
 
+<dialog id="udlg">
+<div style="font-weight:700;font-size:17px;margin-bottom:8px">更新</div>
+<div id="u-msg" style="font-size:14px;line-height:1.5"></div>
+<div style="height:8px;background:var(--line);border-radius:4px;margin:14px 0;overflow:hidden"><i id="u-bar" style="display:block;height:100%;width:0;background:var(--acc)"></i></div>
+<div class="act"><button class="ok" id="u-open" hidden>打开安装界面</button><button id="u-web" hidden>用浏览器下载</button></div>
+<div class="act"><button id="u-close">关闭</button></div>
+</dialog>
+
 <dialog id="adlg">
 <div style="font-weight:700;font-size:17px;margin-bottom:6px">账号与同步</div>
 <div id="a-out">
@@ -338,6 +346,29 @@ function drawSum(){
 document.querySelectorAll(".sg button").forEach(b=>b.onclick=()=>{sumMode=b.dataset.m;drawSum()});
 $("sum-btn").onclick=()=>{drawSum();$("sdlg").showModal();ensureHist().then(c=>{if(c&&$("sdlg").open)drawSum()})};$("sclose").onclick=()=>$("sdlg").close();
 const REPO="lotusVienna/xiaozhangben";
+let updCancelled=false,updUri="";
+const APKT="application/vnd.android.package-archive";
+function uMsg(t,pct,showBtns){$("u-msg").textContent=t;$("u-bar").style.width=(pct==null?0:Math.round(pct*100))+"%";
+ $("u-open").hidden=!(showBtns&&updUri);$("u-web").hidden=!showBtns}
+async function openInstaller(){const P=Capacitor.Plugins;
+ await P.FileOpener.open({filePath:updUri,contentType:APKT})}
+async function installUpdate(url,ver){
+ const P=window.Capacitor&&Capacitor.Plugins;
+ if(!P||!P.Filesystem||!P.FileOpener){window.location.href=url;return}
+ updCancelled=false;updUri="";$("u-web").onclick=()=>{window.location.href=url};
+ $("u-open").onclick=()=>openInstaller().catch(e=>uMsg("无法打开安装界面："+(e.message||e),1,true));
+ $("u-close").onclick=()=>{updCancelled=true;$("udlg").close()};
+ uMsg("正在下载 v"+ver+" …",0,false);$("udlg").showModal();
+ let h=null;
+ try{
+  h=await P.Filesystem.addListener("progress",e=>{if(e.contentLength>0)$("u-bar").style.width=Math.min(100,Math.round(e.bytes/e.contentLength*100))+"%"});
+  await P.Filesystem.downloadFile({url,path:"update.apk",directory:"CACHE",progress:true});
+  updUri=(await P.Filesystem.getUri({path:"update.apk",directory:"CACHE"})).uri;
+  if(updCancelled)return;
+  uMsg("下载完成，请在弹出的界面点「安装」。如果提示不允许安装，请按提示开启「允许安装应用」，再回来点下面的「打开安装界面」。",1,true);
+  await openInstaller()
+ }catch(e){uMsg("下载或安装失败："+(e.message||e)+"\n可以点「用浏览器下载」改用浏览器。",0,true)}
+ finally{if(h)h.remove()}}
 async function checkUpdate(manual){
  const P=window.Capacitor&&Capacitor.Plugins;
  if(!P||!P.App){if(manual)alert("检查更新仅在 App 内可用");return}
@@ -348,8 +379,8 @@ async function checkUpdate(manual){
   const latest=parseInt(String(j.tag_name||"").replace(/\D/g,""))||0;
   const a=(j.assets||[]).find(x=>/\.apk$/i.test(x.name));
   if(latest>cur&&a){
-   if(confirm("发现新版本 v"+latest+"（当前 v"+cur+"）\n\n"+(j.body||"").slice(0,200)+"\n\n现在下载吗？会用系统浏览器下载，完成后点开安装包即可覆盖安装。")){
-    window.location.href=a.browser_download_url}
+   if(confirm("发现新版本 v"+latest+"（当前 v"+cur+"）\n\n"+(j.body||"").slice(0,200)+"\n\n现在下载并安装吗？")){
+    installUpdate(a.browser_download_url,latest)}
   }else if(manual)alert("已是最新版本（v"+cur+"）")
  }catch(e){if(manual)alert("检查更新失败，请检查网络")}
 }
