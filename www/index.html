@@ -36,7 +36,9 @@ body{max-width:560px;margin:0 auto;padding:16px 16px 96px}
 .mb{width:44px;height:44px;flex:none;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-size:20px;position:relative}
 .mb i{position:absolute;top:7px;right:7px;width:9px;height:9px;border-radius:50%;background:var(--out);display:none}
 .mi{display:block;width:100%;height:46px;margin-bottom:8px;border:1px solid var(--line);border-radius:12px;background:none;color:var(--ink);font:inherit;text-align:left;padding:0 14px}
-dialog{max-height:88vh;overflow:auto}
+html{scrollbar-gutter:stable}
+html.lock,html.lock body{overflow:hidden;touch-action:none}
+dialog{max-height:88vh;overflow:auto;overscroll-behavior:contain;touch-action:pan-y}
 dialog{border:0;border-radius:18px;padding:18px;width:min(92vw,520px);background:var(--card);color:var(--ink)}
 dialog::backdrop{background:rgba(0,0,0,.45)}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
@@ -476,6 +478,10 @@ $("a-del").onclick=async()=>{if(!confirm("将永久删除云端账号和云端�
  try{await api("/account/delete",{});S={};saveS();tomb=[];saveT();syncMsg="";amsg("云端账号和数据已删除");updateSyncUI()}catch(e){amsg(e.message||"删除失败，请检查网络")}};
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.token&&Date.now()-(S.lastSync||0)>6e4)doSync()});
 if(!(window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.App))$("upd-btn").hidden=true;
+(function(){const o=HTMLDialogElement.prototype.showModal;
+ HTMLDialogElement.prototype.showModal=function(){if(o)o.call(this);document.documentElement.classList.add("lock")};
+ document.addEventListener("close",()=>{if(!document.querySelector("dialog[open]"))document.documentElement.classList.remove("lock")},true);
+ document.addEventListener("cancel",()=>setTimeout(()=>{if(!document.querySelector("dialog[open]"))document.documentElement.classList.remove("lock")},0),true)})();
 $("menu-btn").onclick=()=>$("mdlg").showModal();
 $("m-close").onclick=()=>$("mdlg").close();
 document.querySelectorAll("#mdlg .mi").forEach(b=>b.addEventListener("click",()=>$("mdlg").close()));
